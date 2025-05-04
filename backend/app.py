@@ -7,6 +7,8 @@ from dotenv import load_dotenv
 from pathlib import Path
 from flask_cors import CORS
 from datetime import datetime
+from datetime import timedelta
+
 
 # Load environment variables
 load_dotenv(dotenv_path=Path('.') / '.env')
@@ -34,6 +36,7 @@ class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     password = db.Column(db.String(120), nullable=False)
+    email = db.Column(db.String(120), nullable=False)  
     medications = db.relationship('Medication', backref='user', lazy=True)
     doctors = db.relationship('Doctor', backref='user', lazy=True)
 
@@ -46,16 +49,27 @@ class Medication(db.Model):
     end_date = db.Column(db.Date, nullable=True)
     is_current = db.Column(db.Boolean, default=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    refill_date = db.Column(db.Date, nullable=True)
 
 class Doctor(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     specialty = db.Column(db.String(100))
-    next_appointment = db.Column(db.Date, nullable=True)
+    next_schedule = db.Column(db.Date, nullable=True)  # ✅ THIS replaces both old fields
     first_seen = db.Column(db.Date, nullable=True)
     is_active = db.Column(db.Boolean, default=True)
     notes = db.Column(db.Text, default="")
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+
+
+class Reminder(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    type = db.Column(db.String(50))  # 'doctor' or 'medication'
+    item_id = db.Column(db.Integer)  # doctor_id or med_id
+    notify_before = db.Column(db.Integer)  # in hours (24 or 168)
+    scheduled_time = db.Column(db.DateTime, nullable=False)
+    email_sent = db.Column(db.Boolean, default=False)
 
 # Authentication
 @app.route('/login', methods=['POST'])
@@ -88,7 +102,7 @@ def register():
         return jsonify(status="error", message="Username already exists."), 409
 
     try:
-        new_user = User(username=username, password=password)
+        new_user = User(username=username, password=password, email=email)
         db.session.add(new_user)
         db.session.commit()
 
@@ -152,7 +166,7 @@ def get_doctor_profile(doc_id):
         "name": doctor.name,
         "specialty": doctor.specialty,
         "first_seen": str(doctor.first_seen),
-        "next_appointment": str(doctor.next_appointment),
+        "next_schedule": str(doctor.next_schedule),
         "is_active": doctor.is_active,
         "notes": doctor.notes
     })
@@ -202,12 +216,12 @@ def get_doctors():
     return jsonify({
         "active_doctors": [
             {"id": d.id, "name": d.name, "specialty": d.specialty,
-             "first_seen": str(d.first_seen), "next_appointment": str(d.next_appointment), "is_active": d.is_active}
+             "first_seen": str(d.first_seen), "next_schedule": str(d.next_schedule), "is_active": d.is_active}
             for d in active_paginated.items
         ],
         "past_doctors": [
             {"id": d.id, "name": d.name, "specialty": d.specialty,
-             "first_seen": str(d.first_seen), "next_appointment": str(d.next_appointment), "is_active": d.is_active}
+             "first_seen": str(d.first_seen), "next_schedule": str(d.next_schedule), "is_active": d.is_active}
             for d in past_paginated.items
         ],
         "pages": max(active_paginated.pages, past_paginated.pages),
@@ -226,7 +240,7 @@ def add_doctor():
             name=data['name'],
             specialty=data.get('specialty'),
             first_seen=datetime.strptime(data['first_seen'], "%Y-%m-%d") if data.get('first_seen') else None,
-            next_appointment=datetime.strptime(data['next_appointment'], "%Y-%m-%d") if data.get('next_appointment') else None,
+            next_schedule=datetime.strptime(data['next_schedule'], "%Y-%m-%d") if data.get('next_schedule') else None,
             is_active=data.get('is_active', True),
             notes=data.get('notes', ''),
             user_id=user_id
@@ -262,14 +276,14 @@ def update_doctor(doc_id):
     else:
         doctor.first_seen = None
 
-    # Validate and parse next_appointment
-    if data.get('next_appointment') and data['next_appointment'] != 'None':
+   
+    if data.get('next_schedule') and data['next_schedule'] != 'None':
         try:
-            doctor.next_appointment = datetime.strptime(data['next_appointment'], "%Y-%m-%d")
+            doctor.next_schedule = datetime.strptime(data['next_schedule'], "%Y-%m-%d")
         except ValueError:
-            return jsonify(status="error", message="Invalid next_appointment format. Use YYYY-MM-DD"), 400
+            return jsonify(status="error", message="Invalid next_schedule format. Use YYYY-MM-DD"), 400
     else:
-        doctor.next_appointment = None
+        doctor.next_schedule = None
 
     doctor.is_active = data.get('is_active', doctor.is_active)
     doctor.notes = data.get('notes', doctor.notes)
@@ -291,6 +305,7 @@ def add_medication():
         time=data.get('time'),
         start_date=datetime.strptime(data['start_date'], "%Y-%m-%d") if data.get('start_date') else None,
         end_date=datetime.strptime(data['end_date'], "%Y-%m-%d") if data.get('end_date') else None,
+        refill_date=datetime.strptime(data['refill_date'], "%Y-%m-%d") if data.get('refill_date') else None,
         is_current=data.get('is_current', True),
         user_id=user_id
     )
@@ -328,20 +343,37 @@ def get_medications():
     past_paginated = past_query.paginate(page=page, per_page=limit, error_out=False)
 
     return jsonify({
-        "current_medications": [
-            {"id": m.id, "name": m.name, "dosage": m.dosage, "time": m.time,
-             "start_date": str(m.start_date), "end_date": str(m.end_date), "is_current": m.is_current}
-            for m in current_paginated.items
-        ],
-        "past_medications": [
-            {"id": m.id, "name": m.name, "dosage": m.dosage, "time": m.time,
-             "start_date": str(m.start_date), "end_date": str(m.end_date), "is_current": m.is_current}
-            for m in past_paginated.items
-        ],
-        "pages": max(current_paginated.pages, past_paginated.pages),
-        "page": page,
-        "limit": limit
-    })
+    "current_medications": [
+        {
+            "id": m.id,
+            "name": m.name,
+            "dosage": m.dosage,
+            "time": m.time,
+            "start_date": str(m.start_date),
+            "end_date": str(m.end_date),
+            "refill_date": str(m.refill_date),  # ✅ Add this line
+            "is_current": m.is_current
+        }
+        for m in current_paginated.items
+    ],
+    "past_medications": [
+        {
+            "id": m.id,
+            "name": m.name,
+            "dosage": m.dosage,
+            "time": m.time,
+            "start_date": str(m.start_date),
+            "end_date": str(m.end_date),
+            "refill_date": str(m.refill_date),  # ✅ And this line
+            "is_current": m.is_current
+        }
+        for m in past_paginated.items
+    ],
+    "pages": max(current_paginated.pages, past_paginated.pages),
+    "page": page,
+    "limit": limit
+})
+
 
 @app.route('/medications/<int:med_id>', methods=['PUT'])
 @jwt_required()
@@ -359,6 +391,12 @@ def update_medication(med_id):
 
     start_date_str = data.get('start_date')
     end_date_str = data.get('end_date')
+    refill_date_str = data.get('refill_date')
+    try:
+        med.refill_date = datetime.strptime(refill_date_str, "%Y-%m-%d") if refill_date_str else None
+    except ValueError:
+        return jsonify(status="error", message="Invalid refill date format. Use YYYY-MM-DD."), 400
+
 
 # Safely update start date
     try:
@@ -405,6 +443,67 @@ def delete_doctor(doc_id):
     db.session.delete(doctor)
     db.session.commit()
     return jsonify(status="success", message="Doctor deleted"), 200
+
+#Reminder
+@app.route('/set_reminder', methods=['POST'])
+@jwt_required()
+def set_reminder():
+    user_id = get_jwt_identity()
+    data = request.get_json()
+
+    reminder_type = data.get('type')
+    item_id = data.get('id')
+    time_before = data.get('time_before')
+
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify(status="error", message="User not found"), 404
+
+    if reminder_type == 'doctor':
+        doctor = Doctor.query.filter_by(id=item_id, user_id=user_id).first()
+        if not doctor or not doctor.next_schedule:
+            return jsonify(status="error", message="Invalid doctor or missing next schedule"), 400
+        appointment_date = doctor.next_schedule
+        label = f"Doctor: {doctor.name} appointment"
+    elif reminder_type == 'medication':
+        medication = Medication.query.filter_by(id=item_id, user_id=user_id).first()
+        if not medication:
+            return jsonify(status="error", message="Invalid medication"), 400
+
+        # Set tomorrow as a default refill reminder for demo (you can improve this logic)
+        appointment_date = medication.refill_date
+        if not appointment_date:
+            return jsonify(status="error", message="Medication missing refill_date"), 400
+        label = f"Medication: {medication.name} refill"
+    else:
+        return jsonify(status="error", message="Invalid reminder type"), 400
+
+    # Determine reminder date
+    if time_before == '24h':
+        reminder_date = appointment_date - timedelta(days=1)
+    elif time_before == '7d':
+        reminder_date = appointment_date - timedelta(days=7)
+    else:
+        return jsonify(status="error", message="Invalid time_before option"), 400
+
+    # Send email now as demo (real logic would schedule it)
+    try:
+        msg = Message(
+            subject="📅 Reminder from Road to Self-Care",
+            recipients=[user.email],  # assuming username is the email
+            html=f"""
+                <h3>Upcoming Reminder</h3>
+                <p>{label}</p>
+                <p>Scheduled Date: {appointment_date.strftime("%B %d, %Y")}</p>
+                <p>This is a reminder set for {time_before} before the event.</p>
+            """
+        )
+        mail.send(msg)
+        return jsonify(status="success", message="✅ Reminder email sent (demo mode)."), 200
+    except Exception as e:
+        print("Mail send error:", str(e))
+        return jsonify(status="error", message="Failed to send email"), 500
+
 
 # Run
 if __name__ == '__main__':

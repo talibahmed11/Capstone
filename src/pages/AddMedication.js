@@ -1,8 +1,19 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
+import DatePicker from "react-datepicker";
+import "react-datepicker/dist/react-datepicker.css";
 
 const AddMedication = () => {
-  const [formData, setFormData] = useState({ name: "", dosage: "", time: "", start_date: "", end_date: "", is_current: true });
+  const [formData, setFormData] = useState({
+    name: "",
+    dosage: "",
+    time: "",
+    start_date: "",
+    end_date: "",
+    is_current: true,
+    refill_date: "",
+  });
+
   const [medications, setMedications] = useState({ current: [], past: [] });
   const [editingId, setEditingId] = useState(null);
   const [message, setMessage] = useState("");
@@ -21,9 +32,12 @@ const AddMedication = () => {
 
   const fetchMedications = async () => {
     try {
-      const response = await axios.get(`http://127.0.0.1:5000/medications?page=${page}&search=${search}&limit=${limit}&sort_by=${sortBy}&order=${order}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const response = await axios.get(
+        `http://127.0.0.1:5000/medications?page=${page}&search=${search}&limit=${limit}&sort_by=${sortBy}&order=${order}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
       setMedications({
         current: response.data.current_medications || [],
         past: response.data.past_medications || [],
@@ -40,7 +54,7 @@ const AddMedication = () => {
     setFormData({
       ...formData,
       [name]: type === "checkbox" ? checked : value,
-      ...(name === "is_current" && checked ? { end_date: "" } : {})
+      ...(name === "is_current" && checked ? { end_date: "" } : {}),
     });
   };
 
@@ -57,14 +71,26 @@ const AddMedication = () => {
       };
 
       if (editingId) {
-        await axios.put(`http://127.0.0.1:5000/medications/${editingId}`, formData, config);
+        await axios.put(
+          `http://127.0.0.1:5000/medications/${editingId}`,
+          formData,
+          config
+        );
         setMessage("✅ Medication updated.");
       } else {
         await axios.post("http://127.0.0.1:5000/medications", formData, config);
         setMessage("✅ Medication added.");
       }
 
-      setFormData({ name: "", dosage: "", time: "", start_date: "", end_date: "", is_current: true });
+      setFormData({
+        name: "",
+        dosage: "",
+        time: "",
+        start_date: "",
+        end_date: "",
+        is_current: true,
+        refill_date: "",
+      });
       setEditingId(null);
       fetchMedications();
     } catch (error) {
@@ -80,7 +106,8 @@ const AddMedication = () => {
       time: med.time,
       start_date: med.start_date || "",
       end_date: med.end_date || "",
-      is_current: med.is_current
+      is_current: med.is_current,
+      refill_date: med.refill_date || "",
     });
     setEditingId(med.id);
     setMessage("");
@@ -109,21 +136,96 @@ const AddMedication = () => {
       <h2>Add or Update Medication</h2>
 
       <form onSubmit={handleAddOrUpdate} style={styles.form}>
-        <input type="text" name="name" placeholder="Medication Name" value={formData.name} onChange={handleChange} style={styles.input} required />
-        <input type="text" name="dosage" placeholder="Dosage (e.g., 20mg)" value={formData.dosage} onChange={handleChange} style={styles.input} />
-        <input type="text" name="time" placeholder="Frequency (e.g., Once a day)" value={formData.time} onChange={handleChange} style={styles.input} />
-        <input type="date" name="start_date" value={formData.start_date} onChange={handleChange} style={styles.input} />
+        <input
+          type="text"
+          name="name"
+          placeholder="Medication Name"
+          value={formData.name}
+          onChange={handleChange}
+          style={styles.input}
+          required
+        />
+        <input
+          type="text"
+          name="dosage"
+          placeholder="Dosage (e.g., 20mg)"
+          value={formData.dosage}
+          onChange={handleChange}
+          style={styles.input}
+        />
+        <input
+          type="text"
+          name="time"
+          placeholder="Frequency (e.g., Once a day)"
+          value={formData.time}
+          onChange={handleChange}
+          style={styles.input}
+        />
+
+        <DatePicker
+          selected={formData.start_date ? new Date(formData.start_date) : null}
+          onChange={(date) =>
+            setFormData({ ...formData, start_date: date.toISOString().split("T")[0] })
+          }
+          placeholderText="Start Date"
+          dateFormat="MM/dd/yyyy"
+          showMonthDropdown
+          showYearDropdown
+          dropdownMode="select"
+          className="form-control"
+        />
+
         {!formData.is_current && (
-          <input type="date" name="end_date" value={formData.end_date} onChange={handleChange} style={styles.input} />
+          <DatePicker
+            selected={formData.end_date ? new Date(formData.end_date) : null}
+            onChange={(date) =>
+              setFormData({ ...formData, end_date: date.toISOString().split("T")[0] })
+            }
+            placeholderText="End Date"
+            dateFormat="MM/dd/yyyy"
+            showMonthDropdown
+            showYearDropdown
+            dropdownMode="select"
+            className="form-control"
+          />
         )}
+
+        <DatePicker
+          selected={formData.refill_date ? new Date(formData.refill_date) : null}
+          onChange={(date) =>
+            setFormData({ ...formData, refill_date: date.toISOString().split("T")[0] })
+          }
+          placeholderText="Refill Date (for reminders)"
+          dateFormat="MM/dd/yyyy"
+          showMonthDropdown
+          showYearDropdown
+          dropdownMode="select"
+          className="form-control"
+        />
+
         <label>
-          <input type="checkbox" name="is_current" checked={formData.is_current} onChange={handleChange} /> Currently Taking
+          <input
+            type="checkbox"
+            name="is_current"
+            checked={formData.is_current}
+            onChange={handleChange}
+          />{" "}
+          Currently Taking
         </label>
-        <button type="submit" style={styles.button}>{editingId ? "Update" : "Add"}</button>
+        <button type="submit" style={styles.button}>
+          {editingId ? "Update" : "Add"}
+        </button>
       </form>
 
+      {/* Search & Pagination Controls */}
       <div style={{ ...styles.form, flexDirection: "row", gap: "10px" }}>
-        <input type="text" placeholder="Search by name..." value={search} onChange={handleSearchChange} style={styles.input} />
+        <input
+          type="text"
+          placeholder="Search by name..."
+          value={search}
+          onChange={handleSearchChange}
+          style={styles.input}
+        />
         <select value={limit} onChange={(e) => setLimit(Number(e.target.value))} style={styles.input}>
           <option value={3}>3 per page</option>
           <option value={5}>5 per page</option>
@@ -140,18 +242,21 @@ const AddMedication = () => {
         </select>
       </div>
 
+      {/* Pagination Buttons */}
       <div style={styles.pagination}>
         <button
           style={page <= 1 ? styles.pageBtnDisabled : styles.pageBtn}
-          onClick={() => setPage(p => Math.max(1, p - 1))}
+          onClick={() => setPage((p) => Math.max(1, p - 1))}
           disabled={page <= 1}
         >
           Previous
         </button>
-        <span>Page {page} of {totalPages}</span>
+        <span>
+          Page {page} of {totalPages}
+        </span>
         <button
           style={page >= totalPages ? styles.pageBtnDisabled : styles.pageBtn}
-          onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+          onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
           disabled={page >= totalPages}
         >
           Next
@@ -160,27 +265,37 @@ const AddMedication = () => {
 
       {message && <p>{message}</p>}
 
+      {/* Current Medications */}
       <h3>Current Medications</h3>
       <ul style={styles.medList}>
         {medications.current.map((med) => (
           <li key={med.id} style={styles.medItem}>
             <strong>{med.name}</strong> — {med.dosage} at {med.time}
             <div>
-              <button style={styles.editBtn} onClick={() => handleEdit(med)}>Edit</button>
-              <button style={styles.delBtn} onClick={() => handleDelete(med.id)}>Delete</button>
+              <button style={styles.editBtn} onClick={() => handleEdit(med)}>
+                Edit
+              </button>
+              <button style={styles.delBtn} onClick={() => handleDelete(med.id)}>
+                Delete
+              </button>
             </div>
           </li>
         ))}
       </ul>
 
+      {/* Past Medications */}
       <h3>Past Medications</h3>
       <ul style={styles.medList}>
         {medications.past.map((med) => (
           <li key={med.id} style={styles.medItem}>
             <strong>{med.name}</strong> — {med.dosage} at {med.time}
             <div>
-              <button style={styles.editBtn} onClick={() => handleEdit(med)}>Edit</button>
-              <button style={styles.delBtn} onClick={() => handleDelete(med.id)}>Delete</button>
+              <button style={styles.editBtn} onClick={() => handleEdit(med)}>
+                Edit
+              </button>
+              <button style={styles.delBtn} onClick={() => handleDelete(med.id)}>
+                Delete
+              </button>
             </div>
           </li>
         ))}
@@ -188,6 +303,8 @@ const AddMedication = () => {
     </div>
   );
 };
+
+// Keep your existing styles here...
 
 const styles = {
   container: {
