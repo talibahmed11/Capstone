@@ -28,17 +28,23 @@ const Navbar = () => {
         <Link to="/dashboard" style={styles.link}>Dashboard</Link>
         <Link to="/add-medication" style={styles.link}>Add Medication</Link>
         <Link to="/reminders" style={styles.link}>Reminders</Link>
+
         {!token && (
           <>
             <Link to="/login" style={styles.link}>Login</Link>
             <Link to="/register" style={styles.link}>Register</Link>
           </>
         )}
+
         {token && (
-          <div style={styles.userSection}>
-            <span style={styles.userIcon}>👤</span>
-            <button onClick={handleLogout} style={styles.logoutButton}>Logout</button>
-          </div>
+          <>
+            <Link to="/doctors" style={styles.link}>Doctors</Link>
+            <Link to="/add-doctor" style={styles.link}>Add Doctor</Link>
+            <div style={styles.userSection}>
+              <span style={styles.userIcon}>👤</span>
+              <button onClick={handleLogout} style={styles.logoutButton}>Logout</button>
+            </div>
+          </>
         )}
       </div>
     </nav>

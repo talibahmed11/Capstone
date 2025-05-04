@@ -7,8 +7,10 @@ import Login from "./pages/Login";
 import Register from "./pages/Register";
 import AddMedication from "./pages/AddMedication";
 import Reminders from "./pages/Reminders";
+import AddDoctor from "./pages/AddDoctor";
+import DoctorProfile from "./pages/DoctorProfile"; // ✅ Import the Doctor Profile component
 
-// Navbar Component
+// ✅ Internal navigation bar component with simplified links
 function Navbar({ isLoggedIn, onLogout }) {
   const navigate = useNavigate();
 
@@ -25,6 +27,13 @@ function Navbar({ isLoggedIn, onLogout }) {
         <Link to="/dashboard" style={styles.link}>Dashboard</Link>
         <Link to="/add-medication" style={styles.link}>Add Medication</Link>
         <Link to="/reminders" style={styles.link}>Reminders</Link>
+
+        {isLoggedIn && (
+          <>
+            <Link to="/add-doctor" style={styles.link}>Doctors</Link> {/* 👈 This goes to AddDoctor */}
+          </>
+        )}
+
         {!isLoggedIn && (
           <>
             <Link to="/login" style={styles.link}>Login</Link>
@@ -32,6 +41,7 @@ function Navbar({ isLoggedIn, onLogout }) {
           </>
         )}
       </div>
+
       {isLoggedIn && (
         <div style={styles.userSection}>
           <span style={styles.userIcon}>👤</span>
@@ -57,7 +67,7 @@ function App() {
   return (
     <Router>
       <Navbar isLoggedIn={isLoggedIn} onLogout={() => setIsLoggedIn(false)} />
-      <div style={styles.pageWrapper}> {/* ✅ This adds global padding */}
+      <div style={styles.pageWrapper}>
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/dashboard" element={<Dashboard />} />
@@ -65,13 +75,15 @@ function App() {
           <Route path="/register" element={<Register />} />
           <Route path="/add-medication" element={<AddMedication />} />
           <Route path="/reminders" element={<Reminders />} />
+          <Route path="/add-doctor" element={<AddDoctor />} /> {/* ✅ Goes to the AddDoctor screen */}
+          <Route path="/doctors/:id" element={<DoctorProfile />} /> {/* ✅ View doctor profile */}
         </Routes>
       </div>
     </Router>
   );
 }
 
-// Simple styles for navigation bar and padding
+// Styles
 const styles = {
   navbar: {
     position: "fixed",
@@ -85,7 +97,7 @@ const styles = {
     backgroundColor: "#2c3e50",
     color: "#fff",
     alignItems: "center",
-    height: "60px", // ✅ ensure consistent height
+    height: "60px",
   },
   link: {
     marginRight: "15px",
@@ -110,7 +122,7 @@ const styles = {
     cursor: "pointer",
   },
   pageWrapper: {
-    paddingTop: "80px", // ✅ push all pages below the fixed navbar
+    paddingTop: "80px",
   },
 };
 

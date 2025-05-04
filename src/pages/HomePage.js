@@ -20,8 +20,8 @@ const HomePage = () => {
           Your personalized health management starts here.
         </p>
         <div style={styles.buttonGroup}>
-          <Link to="/dashboard" style={styles.primaryButton}>
-            View Dashboard
+          <Link to="/Login" style={styles.primaryButton}>
+            Log In
           </Link>
           <Link to="/register" style={styles.secondaryButton}>
             Sign Up
