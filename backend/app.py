@@ -35,6 +35,7 @@ class User(db.Model):
     username = db.Column(db.String(80), unique=True, nullable=False)
     password = db.Column(db.String(120), nullable=False)
     medications = db.relationship('Medication', backref='user', lazy=True)
+    doctors = db.relationship('Doctor', backref='user', lazy=True)
 
 class Medication(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -46,7 +47,17 @@ class Medication(db.Model):
     is_current = db.Column(db.Boolean, default=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
 
-# Login
+class Doctor(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    specialty = db.Column(db.String(100))
+    next_appointment = db.Column(db.Date, nullable=True)
+    first_seen = db.Column(db.Date, nullable=True)
+    is_active = db.Column(db.Boolean, default=True)
+    notes = db.Column(db.Text, default="")
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+
+# Authentication
 @app.route('/login', methods=['POST'])
 def login():
     data = request.get_json()
@@ -63,7 +74,6 @@ def login():
     else:
         return jsonify(message="Invalid credentials"), 401
 
-# Register
 @app.route('/register', methods=['POST'])
 def register():
     data = request.get_json()
@@ -99,7 +109,6 @@ def register():
         print("Registration error:", str(e))
         return jsonify(status="error", message="Internal server error."), 500
 
-# Send reminder email
 @app.route('/send_reminder', methods=['POST'])
 def send_email_reminder():
     data = request.get_json()
@@ -131,40 +140,164 @@ def send_email_reminder():
     except Exception as e:
         return jsonify(status="error", message=str(e)), 500
 
-# Add medication
+@app.route('/doctors/<int:doc_id>', methods=['GET'])
+@jwt_required()
+def get_doctor_profile(doc_id):
+    user_id = get_jwt_identity()
+    doctor = Doctor.query.filter_by(id=doc_id, user_id=user_id).first()
+    if not doctor:
+        return jsonify(status="error", message="Doctor not found"), 404
+    return jsonify({
+        "id": doctor.id,
+        "name": doctor.name,
+        "specialty": doctor.specialty,
+        "first_seen": str(doctor.first_seen),
+        "next_appointment": str(doctor.next_appointment),
+        "is_active": doctor.is_active,
+        "notes": doctor.notes
+    })
+
+@app.route('/doctors/<int:doc_id>/notes', methods=['PUT'])
+@jwt_required()
+def update_doctor_notes(doc_id):
+    user_id = get_jwt_identity()
+    doctor = Doctor.query.filter_by(id=doc_id, user_id=user_id).first()
+    if not doctor:
+        return jsonify(status="error", message="Doctor not found"), 404
+
+    data = request.get_json()
+    doctor.notes = data.get('notes', doctor.notes)
+    db.session.commit()
+    return jsonify(status="success", message="Notes updated")
+
+# Doctor routes
+@app.route('/doctors', methods=['GET'])
+@jwt_required()
+def get_doctors():
+    user_id = get_jwt_identity()
+    page = request.args.get('page', 1, type=int)
+    limit = request.args.get('limit', 5, type=int)
+    search = request.args.get('search', '', type=str).strip().lower()
+    sort_by = request.args.get('sort_by', 'id')
+    order = request.args.get('order', 'desc')
+
+    sort_fields = {
+        'id': Doctor.id,
+        'name': Doctor.name,
+        'specialty': Doctor.specialty
+    }
+    sort_column = sort_fields.get(sort_by, Doctor.id)
+    sort_order = sort_column.desc() if order == 'desc' else sort_column.asc()
+
+    base_query = Doctor.query.filter_by(user_id=user_id)
+    if search:
+        base_query = base_query.filter(Doctor.name.ilike(f"%{search}%"))
+
+    active_query = base_query.filter_by(is_active=True).order_by(sort_order)
+    past_query = base_query.filter_by(is_active=False).order_by(sort_order)
+
+    active_paginated = active_query.paginate(page=page, per_page=limit, error_out=False)
+    past_paginated = past_query.paginate(page=page, per_page=limit, error_out=False)
+
+    return jsonify({
+        "active_doctors": [
+            {"id": d.id, "name": d.name, "specialty": d.specialty,
+             "first_seen": str(d.first_seen), "next_appointment": str(d.next_appointment), "is_active": d.is_active}
+            for d in active_paginated.items
+        ],
+        "past_doctors": [
+            {"id": d.id, "name": d.name, "specialty": d.specialty,
+             "first_seen": str(d.first_seen), "next_appointment": str(d.next_appointment), "is_active": d.is_active}
+            for d in past_paginated.items
+        ],
+        "pages": max(active_paginated.pages, past_paginated.pages),
+        "page": page,
+        "limit": limit
+    })
+
+@app.route('/doctors', methods=['POST'])
+@jwt_required()
+def add_doctor():
+    user_id = get_jwt_identity()
+    data = request.get_json()
+
+    try:
+        new_doc = Doctor(
+            name=data['name'],
+            specialty=data.get('specialty'),
+            first_seen=datetime.strptime(data['first_seen'], "%Y-%m-%d") if data.get('first_seen') else None,
+            next_appointment=datetime.strptime(data['next_appointment'], "%Y-%m-%d") if data.get('next_appointment') else None,
+            is_active=data.get('is_active', True),
+            notes=data.get('notes', ''),
+            user_id=user_id
+        )
+        db.session.add(new_doc)
+        db.session.commit()
+        return jsonify(status="success", message="Doctor added"), 201
+
+    except Exception as e:
+        return jsonify(status="error", message=f"Failed to add doctor: {str(e)}"), 500
+
+@app.route('/doctors/<int:doc_id>', methods=['PUT'])
+@jwt_required()
+def update_doctor(doc_id):
+    user_id = get_jwt_identity()
+    doctor = Doctor.query.filter_by(id=doc_id, user_id=user_id).first()
+    if not doctor:
+        return jsonify(status="error", message="Doctor not found"), 404
+
+    data = request.get_json()
+    if not data:
+        return jsonify(status="error", message="Missing or invalid JSON body"), 400
+
+    doctor.name = data.get('name', doctor.name)
+    doctor.specialty = data.get('specialty', doctor.specialty)
+
+    # Validate and parse first_seen
+    if data.get('first_seen') and data['first_seen'] != 'None':
+        try:
+            doctor.first_seen = datetime.strptime(data['first_seen'], "%Y-%m-%d")
+        except ValueError:
+            return jsonify(status="error", message="Invalid first_seen format. Use YYYY-MM-DD"), 400
+    else:
+        doctor.first_seen = None
+
+    # Validate and parse next_appointment
+    if data.get('next_appointment') and data['next_appointment'] != 'None':
+        try:
+            doctor.next_appointment = datetime.strptime(data['next_appointment'], "%Y-%m-%d")
+        except ValueError:
+            return jsonify(status="error", message="Invalid next_appointment format. Use YYYY-MM-DD"), 400
+    else:
+        doctor.next_appointment = None
+
+    doctor.is_active = data.get('is_active', doctor.is_active)
+    doctor.notes = data.get('notes', doctor.notes)
+
+    db.session.commit()
+    return jsonify(status="success", message="Doctor updated"), 200
+
+
+
+# Medication routes
 @app.route('/medications', methods=['POST'])
 @jwt_required()
 def add_medication():
-    if not request.is_json:
-        return jsonify(status="error", message="Missing JSON in request"), 400
-
     data = request.get_json()
-    name = data.get('name')
-    dosage = data.get('dosage')
-    time = data.get('time')
-    start_date = data.get('start_date')
-    end_date = data.get('end_date')
-    is_current = data.get('is_current', True)
     user_id = get_jwt_identity()
-
-    if not name:
-        return jsonify(status="error", message="Medication name is required"), 400
-
     new_med = Medication(
-        name=name,
-        dosage=dosage,
-        time=time,
-        user_id=user_id,
-        start_date=datetime.strptime(start_date, "%Y-%m-%d") if start_date else None,
-        end_date=datetime.strptime(end_date, "%Y-%m-%d") if end_date else None,
-        is_current=is_current
+        name=data.get('name'),
+        dosage=data.get('dosage'),
+        time=data.get('time'),
+        start_date=datetime.strptime(data['start_date'], "%Y-%m-%d") if data.get('start_date') else None,
+        end_date=datetime.strptime(data['end_date'], "%Y-%m-%d") if data.get('end_date') else None,
+        is_current=data.get('is_current', True),
+        user_id=user_id
     )
     db.session.add(new_med)
     db.session.commit()
-
     return jsonify(status="success", message="Medication added"), 201
 
-# Get medications with pagination + sorting + filtering
 @app.route('/medications', methods=['GET'])
 @jwt_required()
 def get_medications():
@@ -210,7 +343,6 @@ def get_medications():
         "limit": limit
     })
 
-# Update medication
 @app.route('/medications/<int:med_id>', methods=['PUT'])
 @jwt_required()
 def update_medication(med_id):
@@ -223,14 +355,31 @@ def update_medication(med_id):
     med.name = data.get('name', med.name)
     med.dosage = data.get('dosage', med.dosage)
     med.time = data.get('time', med.time)
-    med.start_date = datetime.strptime(data['start_date'], "%Y-%m-%d") if data.get('start_date') else med.start_date
-    med.end_date = datetime.strptime(data['end_date'], "%Y-%m-%d") if data.get('end_date') else med.end_date
+    med.is_current = data.get('is_current', med.is_current)
+
+    start_date_str = data.get('start_date')
+    end_date_str = data.get('end_date')
+
+# Safely update start date
+    try:
+        med.start_date = datetime.strptime(start_date_str, "%Y-%m-%d") if start_date_str else None
+    except ValueError:
+        return jsonify(status="error", message="Invalid start date format. Use YYYY-MM-DD."), 400
+
+    # Only update end_date if is_current is False
+    if not med.is_current:
+        try:
+            med.end_date = datetime.strptime(end_date_str, "%Y-%m-%d") if end_date_str else None
+        except ValueError:
+            return jsonify(status="error", message="Invalid end date format. Use YYYY-MM-DD."), 400
+    else:
+        med.end_date = None  # Clear out end_date if it's now a current med
+
     med.is_current = data.get('is_current', med.is_current)
     db.session.commit()
 
     return jsonify(status="success", message="Medication updated"), 200
 
-# Delete medication
 @app.route('/medications/<int:med_id>', methods=['DELETE'])
 @jwt_required()
 def delete_medication(med_id):
@@ -243,6 +392,19 @@ def delete_medication(med_id):
     db.session.commit()
 
     return jsonify(status="success", message="Medication deleted"), 200
+
+#Delete Doctor
+@app.route('/doctors/<int:doc_id>', methods=['DELETE'])
+@jwt_required()
+def delete_doctor(doc_id):
+    user_id = get_jwt_identity()
+    doctor = Doctor.query.filter_by(id=doc_id, user_id=user_id).first()
+    if not doctor:
+        return jsonify(status="error", message="Doctor not found"), 404
+
+    db.session.delete(doctor)
+    db.session.commit()
+    return jsonify(status="success", message="Doctor deleted"), 200
 
 # Run
 if __name__ == '__main__':

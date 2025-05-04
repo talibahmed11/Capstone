@@ -7,6 +7,8 @@ import Login from "./pages/Login";
 import Register from "./pages/Register";
 import AddMedication from "./pages/AddMedication";
 import Reminders from "./pages/Reminders";
+import AddDoctor from "./pages/AddDoctor"; // ✅ New
+import DoctorProfile from "./pages/DoctorProfile"; // ✅ New
 
 // Navbar Component
 function Navbar({ isLoggedIn, onLogout }) {
@@ -23,7 +25,8 @@ function Navbar({ isLoggedIn, onLogout }) {
       <div>
         <Link to="/" style={styles.link}>Home</Link>
         <Link to="/dashboard" style={styles.link}>Dashboard</Link>
-        <Link to="/add-medication" style={styles.link}>Add Medication</Link>
+        <Link to="/add-medication" style={styles.link}>Medications</Link> {/* ✅ Renamed */}
+        <Link to="/doctors" style={styles.link}>Doctors</Link> {/* ✅ New tab */}
         <Link to="/reminders" style={styles.link}>Reminders</Link>
         {!isLoggedIn && (
           <>
@@ -57,7 +60,7 @@ function App() {
   return (
     <Router>
       <Navbar isLoggedIn={isLoggedIn} onLogout={() => setIsLoggedIn(false)} />
-      <div style={styles.pageWrapper}> {/* ✅ This adds global padding */}
+      <div style={styles.pageWrapper}>
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/dashboard" element={<Dashboard />} />
@@ -65,13 +68,15 @@ function App() {
           <Route path="/register" element={<Register />} />
           <Route path="/add-medication" element={<AddMedication />} />
           <Route path="/reminders" element={<Reminders />} />
+          <Route path="/doctors" element={<AddDoctor />} /> {/* ✅ New route */}
+          <Route path="/doctors/:id" element={<DoctorProfile />} /> {/* ✅ Doctor profile route */}
         </Routes>
       </div>
     </Router>
   );
 }
 
-// Simple styles for navigation bar and padding
+// Styles
 const styles = {
   navbar: {
     position: "fixed",
@@ -85,7 +90,7 @@ const styles = {
     backgroundColor: "#2c3e50",
     color: "#fff",
     alignItems: "center",
-    height: "60px", // ✅ ensure consistent height
+    height: "60px",
   },
   link: {
     marginRight: "15px",
@@ -110,7 +115,7 @@ const styles = {
     cursor: "pointer",
   },
   pageWrapper: {
-    paddingTop: "80px", // ✅ push all pages below the fixed navbar
+    paddingTop: "80px",
   },
 };
 
