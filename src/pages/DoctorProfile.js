@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
+import dayjs from "dayjs";
 
 const DoctorProfile = () => {
   const { id } = useParams();
@@ -55,8 +56,8 @@ const DoctorProfile = () => {
       <h2 style={styles.title}>{doctor.name}</h2>
       <div style={styles.detailGroup}>
         <p><strong>Specialty:</strong> {doctor.specialty || "N/A"}</p>
-        <p><strong>First Seen:</strong> {doctor.first_seen || "N/A"}</p>
-        <p><strong>Next Scheduled Visit:</strong> {doctor.next_schedule || "N/A"}</p>
+        <p><strong>First Seen:</strong> {doctor.first_seen ? dayjs(doctor.first_seen).format("MM/DD/YYYY") : "N/A"}</p>
+        <p><strong>Next Scheduled Visit:</strong> {doctor.next_schedule ? dayjs(doctor.next_schedule).format("MM/DD/YYYY") : "N/A"}</p>
         <p><strong>Status:</strong> {doctor.is_active ? "✅ Active" : "❌ Inactive"}</p>
       </div>
 

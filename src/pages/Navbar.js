@@ -26,8 +26,7 @@ const Navbar = () => {
       <div style={{ ...styles.linksContainer, display: menuOpen ? "flex" : "none" }}>
         <Link to="/" style={styles.link}>Home</Link>
         <Link to="/dashboard" style={styles.link}>Dashboard</Link>
-        <Link to="/add-medication" style={styles.link}>Medications</Link>
-        <Link to="/doctors" style={styles.link}>Doctors</Link>
+        <Link to="/add-medication" style={styles.link}>Add Medication</Link>
         <Link to="/reminders" style={styles.link}>Reminders</Link>
         {!token && (
           <>
